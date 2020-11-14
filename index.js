@@ -55,6 +55,25 @@ const voronoi = (points, extent=defaultExtent) => {
   return voronoi
 }
 
+// Lloyd's algorithm "relaxes" a Voronoi diagram by making the polygons more regular.
+// It does this by moving the generator of each region towards the centroid of its region
+const lloydRelax = (points, regions, iterations=1) => {
+  let idx = 0
+  for (let i=0; i<iterations; i++) {
+    for (region of regions) {
+      const centroid = d3.polygonCentroid(region)
+      const dx = centroid[0] - points[idx][0]
+      const dy = centroid[1] - points[idx][1]
+      points[idx][0] += dx
+      points[idx][1] += dy
+      idx++
+    }
+  }
+
+  return points
+}
+
+
 const drawCircle = (point, color='black', radius=2) => {
   // Center each point on the origin and
   // scale its range to the canvas' dimensions
@@ -85,15 +104,21 @@ const demoRandomPoints = n => {
   })
 }
 
-const demoVoronoi = n => {
+const demoVoronoi = (n, nLloydIterations=0) => {
   d3.selectAll('svg').remove()
   svg = createSvgContainer()
 
-  const points = generateRandomPoints(n)
-  colors = ['red', 'orange', 'green', 'blue', 'purple']
+  let points = generateRandomPoints(n)
+  const colors = ['red', 'orange', 'green', 'blue', 'purple']
 
   // polygons is an object
-  const polygons = voronoi(points).cellPolygons()
+  let voronoiMesh = voronoi(points)
+  let polygons = voronoiMesh.cellPolygons()
+
+  points = lloydRelax(points, polygons, nLloydIterations)
+  voronoiMesh.update()
+  polygons = voronoiMesh.cellPolygons()
+
   for (const polygon of polygons) {
     color = colors[Math.floor(Math.random() * colors.length)]
     drawPolygon(polygon, color)
