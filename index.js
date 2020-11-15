@@ -132,7 +132,7 @@ const generateRandomPoints = (n, extent=defaultExtent) => {
   return points
 }
 
-let points = generateRandomPoints(64)
+let points = generateRandomPoints(256)
 
 // A Voronoi diagram is a partition of space into regions.
 //
@@ -171,11 +171,11 @@ const lloydRelax = (points, regions, iterations=1) => {
   return points
 }
 
-const makeMesh = (points, extent=defaultExtent) => {
-  let verts = []   // List of [x, y] coord pairs
-  let vertMap = {} // Dictionary mapping from vertex coord to verts.length
-  let adj = []     // List of lists. Edges that share a coord will be in the same sub list
-                   // Index is # of unique vertices that existed when the coord was added
+const makeMesh = (points, defaultHeight=2, extent=defaultExtent) => {
+  let verts = []  // List of [x, y] coord pairs
+  let vertID = {} // Dictionary mapping from vertex coord to verts.length (used as vertID)
+  let adj = {}    // Dictionary mapping from vertID to list of adjacent vertIDs
+  let height = {} // Dictionary mapping from vertID to height of vertex
 
   // Get edges of Voronoi by parsing its render method
   let vor = voronoi(points)
@@ -188,33 +188,35 @@ const makeMesh = (points, extent=defaultExtent) => {
     let edge1 = x.slice(2)
 
     // Get number of unique verts that existed when this coord was added
-    let e0 = vertMap[edge0]
-    let e1 = vertMap[edge1]
+    let e0 = vertID[edge0]
+    let e1 = vertID[edge1]
 
     // Only add coord to verts if its not already a member
     if (e0 == undefined) {
       e0 = verts.length
-      vertMap[edge0] = e0
+      vertID[edge0] = e0
+      height[vertID[edge0]] = defaultHeight
       verts.push(edge0)
     }
 
     if (e1 == undefined) {
       e1 = verts.length
-      vertMap[edge1] = e1
+      vertID[edge1] = e1
+      height[vertID[edge1]] = defaultHeight
       verts.push(edge1)
     }
 
     // Create adjacency sub list for coord
-    if (adj[e0] == undefined) {
-      adj[e0] = []
+    if (adj[vertID[edge0]] == undefined) {
+      adj[vertID[edge0]] = []
     }
 
-    if (adj[e1] == undefined) {
-      adj[e1] = []
+    if (adj[vertID[edge1]] == undefined) {
+      adj[vertID[edge1]] = []
     }
 
-    adj[e0].push(e1)
-    adj[e1].push(e0)
+    adj[vertID[edge0]].push(e1)
+    adj[vertID[edge1]].push(e0)
   })
   verts.forEach(point => {
     drawCircle(point, 'red', radius=2)
@@ -224,17 +226,45 @@ const makeMesh = (points, extent=defaultExtent) => {
     vor,
     points,
     verts,
-    vertMap,
+    vertID,
+    height,
     voronoi,
     adj,
     extent
   }
 
-  // Apply a function to all of the mesh's vertices
-  mesh.map = function (f) {
-    let mapped = verts.map(f)
-    mapped.mesh = mesh
-    return mapped
+  return mesh
+}
+
+const createMountainRange = (mesh, mountainHeight=8, persistence=0.7, nDegrees=3) => {
+  // Select random vertex
+  randVert = mesh.verts[Math.floor(Math.random() * mesh.verts.length)]
+  vertID = mesh.vertID[randVert]
+
+  // Elevate height of selected vertex
+  mesh.height[vertID] += mountainHeight
+  currAdjVertIDs = mesh.adj[vertID]
+
+  // Keep track of visited vertices so they aren't visited again
+  visitedVertIDs = [vertID]
+
+  // Elevate nDegree connections
+  // Multiply the amount that height is raised by `persistence`
+  for (let i=0; i<nDegrees; i++) {
+    nextAdjVertIDs = []
+    mountainHeight *= persistence
+    currAdjVertIDs.forEach(vertID => {
+      // Don't operate on vertices that have already been visited
+      if (vertID in visitedVertIDs) {
+        return
+      }
+      mesh.height[vertID] += mountainHeight
+      visitedVertIDs.push(vertID)
+
+      // Track what vertices to visit next
+      nextAdjVertIDs.push(...mesh.adj[vertID])
+    })
+    currAdjVertIDs = nextAdjVertIDs
   }
 
   return mesh
@@ -274,7 +304,6 @@ const demoVoronoi = (nLloydIterations=2) => {
   d3.selectAll('svg').remove()
   svg = createSvgContainer()
 
-  // polygons is an object
   let mesh = makeMesh(points)
   let polygons = mesh.vor.cellPolygons()
 
@@ -359,29 +388,33 @@ const demoPerlinNoise = (nLloydIterations=2, noiseScale=2) => {
   }
 }
 
-const demoMap = () => {
+const demoMap = (nLloydIterations=2, nMountainRanges=5) => {
   d3.selectAll('svg').remove()
   svg = createSvgContainer()
   extent = defaultExtent
 
-  // polygons is an object
   let mesh = makeMesh(points)
   let polygons = mesh.vor.cellPolygons()
 
+  if (nLloydIterations > 0) {
+    points = lloydRelax(points, polygons, nLloydIterations)
+    mesh.vor = voronoi(points)
+    polygons = mesh.vor.cellPolygons()
+  }
+
   for (const polygon of polygons) {
-    color = {
-      'r': Math.floor(Math.random() * 256),
-      'g': Math.floor(Math.random() * 256),
-      'b': Math.floor(Math.random() * 256)
-    }
+    color = { r: 256, g: 256, b: 256 }
     drawPolygon(polygon, color)
   }
 
-  points.forEach(point => {
-    drawCircle(point, 'black', radius=2)
-  })
+  for (let i=0; i<nMountainRanges; i++) {
+    mesh = createMountainRange(mesh)
+  }
 
   mesh.verts.forEach(vert => {
-    drawCircle(vert, 'red', radius=2)
+    vertID = mesh.vertID[vert]
+    vertHeight = mesh.height[vertID]
+
+    drawCircle(vert, 'black', radius=vertHeight)
   })
 }
