@@ -182,26 +182,27 @@ const makeMesh = (points, defaultHeight=2, extent=defaultExtent) => {
   let edges = vor.render().split(/M/).slice(1)
   edges.forEach(edge => {
     x = edge.split(/[L,]+/)
+    x = x.map(q => parseFloat(q))
 
     // Coordinates of the two points that the edge consists of
     let edge0 = x.slice(0,2)
     let edge1 = x.slice(2)
 
     // Get number of unique verts that existed when this coord was added
-    let e0 = vertID[edge0]
-    let e1 = vertID[edge1]
+    let id0 = vertID[edge0]
+    let id1 = vertID[edge1]
 
     // Only add coord to verts if its not already a member
-    if (e0 == undefined) {
-      e0 = verts.length
-      vertID[edge0] = e0
+    if (id0 == undefined) {
+      id0 = verts.length
+      vertID[edge0] = id0
       height[vertID[edge0]] = defaultHeight
       verts.push(edge0)
     }
 
-    if (e1 == undefined) {
-      e1 = verts.length
-      vertID[edge1] = e1
+    if (id1 == undefined) {
+      id1 = verts.length
+      vertID[edge1] = id1
       height[vertID[edge1]] = defaultHeight
       verts.push(edge1)
     }
@@ -215,11 +216,8 @@ const makeMesh = (points, defaultHeight=2, extent=defaultExtent) => {
       adj[vertID[edge1]] = []
     }
 
-    adj[vertID[edge0]].push(e1)
-    adj[vertID[edge1]].push(e0)
-  })
-  verts.forEach(point => {
-    drawCircle(point, 'red', radius=2)
+    adj[vertID[edge0]].push(id1)
+    adj[vertID[edge1]].push(id0)
   })
 
   mesh = {
@@ -236,7 +234,22 @@ const makeMesh = (points, defaultHeight=2, extent=defaultExtent) => {
   return mesh
 }
 
-const createMountainRange = (mesh, mountainHeight=8, persistence=0.7, nDegrees=3) => {
+const applySlope = (mesh, slope=5) => {
+  // Generate -1 or 1 for the x and y direction of the slope
+  const slopeX = Math.round(Math.random()) * 2 - 1
+  const slopeY = Math.round(Math.random()) * 2 - 1
+
+  // Create a slope in elevation across the map by setting height
+  // to the average of its x and y position
+  mesh.verts.forEach(vert => {
+    vertID = mesh.vertID[vert]
+    mesh.height[vertID] = slope*(vert[0]*slopeX + vert[1]*slopeY + 1.0) * 0.5
+  })
+
+  return mesh
+}
+
+const createMountainRange = (mesh, mountainHeight=12, persistence=0.7, nDegrees=3) => {
   // Select random vertex
   randVert = mesh.verts[Math.floor(Math.random() * mesh.verts.length)]
   vertID = mesh.vertID[randVert]
@@ -255,7 +268,8 @@ const createMountainRange = (mesh, mountainHeight=8, persistence=0.7, nDegrees=3
     mountainHeight *= persistence
     currAdjVertIDs.forEach(vertID => {
       // Don't operate on vertices that have already been visited
-      if (vertID in visitedVertIDs) {
+      if (visitedVertIDs.includes(vertID)) {
+        console.log(visitedVertIDs)
         return
       }
       mesh.height[vertID] += mountainHeight
@@ -402,10 +416,7 @@ const demoMap = (nLloydIterations=2, nMountainRanges=5) => {
     polygons = mesh.vor.cellPolygons()
   }
 
-  for (const polygon of polygons) {
-    color = { r: 256, g: 256, b: 256 }
-    drawPolygon(polygon, color)
-  }
+  mesh = applySlope(mesh)
 
   for (let i=0; i<nMountainRanges; i++) {
     mesh = createMountainRange(mesh)
@@ -414,6 +425,7 @@ const demoMap = (nLloydIterations=2, nMountainRanges=5) => {
   mesh.verts.forEach(vert => {
     vertID = mesh.vertID[vert]
     vertHeight = mesh.height[vertID]
+    vertHeight = Math.max(0.01, vertHeight)
 
     drawCircle(vert, 'black', radius=vertHeight)
   })
