@@ -9,10 +9,18 @@
     </head>
     <body>
         <div>
-            <button onClick='demoRandomPoints(64)'>Random Points</button>
-            <button onClick='demoVoronoi(64, 0)'>Voronoi Diagram</button>
-            <button onClick='demoVoronoi(64)'>Lloyd Relaxed Voronoi Diagram</button>
-            <button onClick='demoPerlinNoise(1024)'>Heightmap</button>
+                <input id='nPoints' type='text' style='width: 4ch;'></input>
+                <button onClick='demoRandomPoints(getInputValue())'>Generate Random Points</button>
+            <button onClick='demoVoronoi()'>Voronoi Diagram</button>
+            <button onClick='demoVoronoi()'>Lloyd Relaxed Voronoi Diagram</button>
+            <button onClick='demoPerlinNoise()'>Perlin Noise Heightmap</button>
+            <button onClick='demoMap()'>Map</button>
         </div>
+        <script>
+            const getInputValue = () => {
+                return parseInt(document.getElementById('nPoints').value)
+            }
+            demoRandomPoints(64)
+        </script>
     </body>
 </html>

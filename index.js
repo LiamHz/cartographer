@@ -83,6 +83,7 @@ const getPermutationVector = () => {
 // Sum together multiple octaves of noise
 const noise2D = (x, y, p, nOctaves=4, lancunarity=2, persistence=0.5) => {
   let noise = 0
+  // TODO Terrain has clear grid lines. Fix
   for (let i=0; i<nOctaves; i++) {
     scale = Math.pow(lancunarity, i)
     noise += perlinNoise(x*scale, y*scale, p) * Math.pow(persistence, i)
@@ -131,6 +132,8 @@ const generateRandomPoints = (n, extent=defaultExtent) => {
   return points
 }
 
+let points = generateRandomPoints(64)
+
 // A Voronoi diagram is a partition of space into regions.
 //
 // Points are created and act as generators. The region of each generator
@@ -168,6 +171,74 @@ const lloydRelax = (points, regions, iterations=1) => {
   return points
 }
 
+const makeMesh = (points, extent=defaultExtent) => {
+  let verts = []   // List of [x, y] coord pairs
+  let vertMap = {} // Dictionary mapping from vertex coord to verts.length
+  let adj = []     // List of lists. Edges that share a coord will be in the same sub list
+                   // Index is # of unique vertices that existed when the coord was added
+
+  // Get edges of Voronoi by parsing its render method
+  let vor = voronoi(points)
+  let edges = vor.render().split(/M/).slice(1)
+  edges.forEach(edge => {
+    x = edge.split(/[L,]+/)
+
+    // Coordinates of the two points that the edge consists of
+    let edge0 = x.slice(0,2)
+    let edge1 = x.slice(2)
+
+    // Get number of unique verts that existed when this coord was added
+    let e0 = vertMap[edge0]
+    let e1 = vertMap[edge1]
+
+    // Only add coord to verts if its not already a member
+    if (e0 == undefined) {
+      e0 = verts.length
+      vertMap[edge0] = e0
+      verts.push(edge0)
+    }
+
+    if (e1 == undefined) {
+      e1 = verts.length
+      vertMap[edge1] = e1
+      verts.push(edge1)
+    }
+
+    // Create adjacency sub list for coord
+    if (adj[e0] == undefined) {
+      adj[e0] = []
+    }
+
+    if (adj[e1] == undefined) {
+      adj[e1] = []
+    }
+
+    adj[e0].push(e1)
+    adj[e1].push(e0)
+  })
+  verts.forEach(point => {
+    drawCircle(point, 'red', radius=2)
+  })
+
+  mesh = {
+    vor,
+    points,
+    verts,
+    vertMap,
+    voronoi,
+    adj,
+    extent
+  }
+
+  // Apply a function to all of the mesh's vertices
+  mesh.map = function (f) {
+    let mapped = verts.map(f)
+    mapped.mesh = mesh
+    return mapped
+  }
+
+  return mesh
+}
 
 const drawCircle = (point, color='black', radius=2) => {
   // Center each point on the origin and
@@ -193,26 +264,24 @@ const demoRandomPoints = n => {
   d3.selectAll('svg').remove()
   svg = createSvgContainer()
 
-  const points = generateRandomPoints(n)
+  points = generateRandomPoints(n)
   points.forEach(point => {
     drawCircle(point)
   })
 }
 
-const demoVoronoi = (n, nLloydIterations=2) => {
+const demoVoronoi = (nLloydIterations=2) => {
   d3.selectAll('svg').remove()
   svg = createSvgContainer()
 
-  let points = generateRandomPoints(n)
-
   // polygons is an object
-  let voronoiMesh = voronoi(points)
-  let polygons = voronoiMesh.cellPolygons()
+  let mesh = makeMesh(points)
+  let polygons = mesh.vor.cellPolygons()
 
   if (nLloydIterations > 0) {
     points = lloydRelax(points, polygons, nLloydIterations)
-    voronoiMesh.update()
-    polygons = voronoiMesh.cellPolygons()
+    mesh.vor = voronoi(points)
+    polygons = mesh.vor.cellPolygons()
   }
 
   for (const polygon of polygons) {
@@ -229,20 +298,18 @@ const demoVoronoi = (n, nLloydIterations=2) => {
   })
 }
 
-const demoPerlinNoise = (n, nLloydIterations=2, noiseScale=2) => {
+const demoPerlinNoise = (nLloydIterations=2, noiseScale=2) => {
   d3.selectAll('svg').remove()
   svg = createSvgContainer()
 
-  let points = generateRandomPoints(n)
-
   // polygons is an object
-  let voronoiMesh = voronoi(points)
-  let polygons = voronoiMesh.cellPolygons()
+  let mesh = makeMesh(points)
+  let polygons = mesh.vor.cellPolygons()
 
   if (nLloydIterations > 0) {
     points = lloydRelax(points, polygons, nLloydIterations)
-    voronoiMesh.update()
-    polygons = voronoiMesh.cellPolygons()
+    mesh.vor.update()
+    polygons = mesh.vor.cellPolygons()
   }
 
   pv = getPermutationVector()
@@ -283,11 +350,38 @@ const demoPerlinNoise = (n, nLloydIterations=2, noiseScale=2) => {
   for (const polygon of polygons) {
     let biomeIndex = Math.floor(Math.min(0.99, heights[idx]) * biomes.length)
     color = {
-      'r': biomes[biomeIndex][0],
-      'g': biomes[biomeIndex][1],
-      'b': biomes[biomeIndex][2]
+      r: biomes[biomeIndex][0],
+      g: biomes[biomeIndex][1],
+      b: biomes[biomeIndex][2]
     }
     drawPolygon(polygon, color)
     idx++
   }
+}
+
+const demoMap = () => {
+  d3.selectAll('svg').remove()
+  svg = createSvgContainer()
+  extent = defaultExtent
+
+  // polygons is an object
+  let mesh = makeMesh(points)
+  let polygons = mesh.vor.cellPolygons()
+
+  for (const polygon of polygons) {
+    color = {
+      'r': Math.floor(Math.random() * 256),
+      'g': Math.floor(Math.random() * 256),
+      'b': Math.floor(Math.random() * 256)
+    }
+    drawPolygon(polygon, color)
+  }
+
+  points.forEach(point => {
+    drawCircle(point, 'black', radius=2)
+  })
+
+  mesh.verts.forEach(vert => {
+    drawCircle(vert, 'red', radius=2)
+  })
 }
